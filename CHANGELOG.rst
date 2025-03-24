@@ -2,8 +2,8 @@
 Changelog for package laser_geometry
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Forthcoming
------------
+2.4.1 (2025-03-24)
+------------------
 * Add EIGEN_MAKE_ALIGNED_OPERATOR_NEW macro
 * Contributors: Berend Kupers
 
