@@ -162,6 +162,7 @@ public:
     transformLaserScanToPointCloud_(
       target_frame, scan_in, cloud_out, tf, range_cutoff, channel_options);
   }
+  EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
 private:
   // Internal hidden representation of projectLaser
