@@ -29,11 +29,14 @@
  */
 
 #include "laser_geometry/laser_geometry.hpp"
-
 #include <Eigen/Core>
 
 #include <algorithm>
 #include <string>
+#include <fstream>
+#include <filesystem>
+#include <sstream>
+#include <iomanip>
 
 #include "rclcpp/time.hpp"
 #include "sensor_msgs/msg/laser_scan.hpp"
@@ -43,17 +46,108 @@
 
 namespace laser_geometry
 {
-void LaserProjection::projectLaser_(
-  const sensor_msgs::msg::LaserScan & scan_in,
-  sensor_msgs::msg::PointCloud2 & cloud_out,
-  double range_cutoff,
-  int channel_options)
-{
-  size_t n_pts = scan_in.ranges.size();
-  Eigen::ArrayXXd ranges(n_pts, 2);
-  Eigen::ArrayXXd output(n_pts, 2);
+  static std::string laserScanToJson(const sensor_msgs::msg::LaserScan& scan)
+  {
+    std::ostringstream oss;
+    oss << std::setprecision(10);
+    oss << "{";
+    oss << "\"header\":{";
+    oss << "\"stamp\":{\"sec\":" << scan.header.stamp.sec << ",\"nanosec\":" << scan.header.stamp.nanosec << "},";
+    oss << "\"frame_id\":\"" << scan.header.frame_id << "\"";
+    oss << "},";
+    oss << "\"angle_min\":" << scan.angle_min << ",";
+    oss << "\"angle_max\":" << scan.angle_max << ",";
+    oss << "\"angle_increment\":" << scan.angle_increment << ",";
+    oss << "\"time_increment\":" << scan.time_increment << ",";
+    oss << "\"scan_time\":" << scan.scan_time << ",";
+    oss << "\"range_min\":" << scan.range_min << ",";
+    oss << "\"range_max\":" << scan.range_max << ",";
+    oss << "\"ranges\":[";
+    for (size_t i = 0; i < scan.ranges.size(); ++i)
+    {
+      if (i > 0) oss << ",";
+      oss << scan.ranges[i];
+    }
+    oss << "],";
+    oss << "\"intensities\":[";
+    for (size_t i = 0; i < scan.intensities.size(); ++i)
+    {
+      if (i > 0) oss << ",";
+      oss << scan.intensities[i];
+    }
+    oss << "]";
+    oss << "}";
+    return oss.str();
+  }
 
-  // Get the ranges into Eigen format
+  static std::string pointCloud2ToJson(const sensor_msgs::msg::PointCloud2& cloud)
+  {
+    std::ostringstream oss;
+    oss << std::setprecision(10);
+    oss << "{";
+    oss << "\"header\":{";
+    oss << "\"stamp\":{\"sec\":" << cloud.header.stamp.sec << ",\"nanosec\":" << cloud.header.stamp.nanosec << "},";
+    oss << "\"frame_id\":\"" << cloud.header.frame_id << "\"";
+    oss << "},";
+    oss << "\"height\":" << cloud.height << ",";
+    oss << "\"width\":" << cloud.width << ",";
+    oss << "\"fields\":[";
+    for (size_t i = 0; i < cloud.fields.size(); ++i)
+    {
+      if (i > 0) oss << ",";
+      oss << "{\"name\":\"" << cloud.fields[i].name << "\",";
+      oss << "\"offset\":" << cloud.fields[i].offset << ",";
+      oss << "\"datatype\":" << static_cast<int>(cloud.fields[i].datatype) << ",";
+      oss << "\"count\":" << cloud.fields[i].count << "}";
+    }
+    oss << "],";
+    oss << "\"is_bigendian\":" << (cloud.is_bigendian ? "true" : "false") << ",";
+    oss << "\"point_step\":" << cloud.point_step << ",";
+    oss << "\"row_step\":" << cloud.row_step << ",";
+    oss << "\"is_dense\":" << (cloud.is_dense ? "true" : "false") << ",";
+    oss << "\"data_size\":" << cloud.data.size() << ",";
+    oss << "\"data\":\"";
+    for (size_t i = 0; i < cloud.data.size(); ++i)
+    {
+      oss << std::hex << std::setw(2) << std::setfill('0') << static_cast<int>(cloud.data[i]);
+    }
+    oss << "\"";
+    oss << "}";
+    return oss.str();
+  }
+
+  static void writeInputsToJson(const std::string& function_name, const std::string& json_data)
+  {
+    std::filesystem::create_directories("/home/jeanine/data");
+    std::string filename = "/home/jeanine/data/" + function_name + "_inputs.json";
+    std::ofstream file(filename, std::ios::trunc);
+    if (file.is_open())
+    {
+      file << json_data;
+      file.close();
+    }
+  }
+
+  void LaserProjection::projectLaser_(
+    const sensor_msgs::msg::LaserScan& scan_in,
+    sensor_msgs::msg::PointCloud2& cloud_out,
+    double range_cutoff,
+    int channel_options)
+  {
+    std::ostringstream json_oss;
+    json_oss << std::setprecision(10);
+    json_oss << "{\"function\":\"projectLaser_\",\"scan_in\":" << laserScanToJson(scan_in);
+    json_oss << ",\"range_cutoff\":" << range_cutoff;
+    json_oss << ",\"cloud_out\":" << pointCloud2ToJson(cloud_out);
+    json_oss << ",\"channel_options\":" << channel_options << "}";
+    writeInputsToJson("projectLaser_", json_oss.str());
+
+
+    size_t n_pts = scan_in.ranges.size();
+    Eigen::ArrayXXd ranges(n_pts, 2);
+    Eigen::ArrayXXd output(n_pts, 2);
+
+    // Get the ranges into Eigen format
   for (size_t i = 0; i < n_pts; ++i) {
     ranges(i, 0) = static_cast<double>(scan_in.ranges[i]);
     ranges(i, 1) = static_cast<double>(scan_in.ranges[i]);
@@ -257,16 +351,16 @@ void LaserProjection::projectLaser_(
     */
   }
 
-  // resize if necessary
-  cloud_out.width = count;
-  cloud_out.row_step = cloud_out.point_step * cloud_out.width;
-  cloud_out.data.resize(cloud_out.row_step * cloud_out.height);
-}
+    // resize if necessary
+    cloud_out.width = count;
+    cloud_out.row_step = cloud_out.point_step * cloud_out.width;
+    cloud_out.data.resize(cloud_out.row_step * cloud_out.height);
+  }
 
 void LaserProjection::transformLaserScanToPointCloud_(
   const std::string & target_frame,
   const sensor_msgs::msg::LaserScan & scan_in,
-  sensor_msgs::msg::PointCloud2 & cloud_out,
+  sensor_msgs::msg::PointCloud2& cloud_out,
   tf2::Quaternion quat_start,
   tf2::Vector3 origin_start,
   tf2::Quaternion quat_end,
@@ -414,10 +508,10 @@ void LaserProjection::transformLaserScanToPointCloud_(
 }
 
 void LaserProjection::transformLaserScanToPointCloud_(
-  const std::string & target_frame,
-  const sensor_msgs::msg::LaserScan & scan_in,
-  sensor_msgs::msg::PointCloud2 & cloud_out,
-  tf2::BufferCore & tf,
+  const std::string& target_frame,
+  const sensor_msgs::msg::LaserScan& scan_in,
+  sensor_msgs::msg::PointCloud2& cloud_out,
+  tf2::BufferCore& tf,
   double range_cutoff,
   int channel_options)
 {
